@@ -24,33 +24,28 @@ function App() {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  //  Fetch current user details if JWT/cookie exists
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await fetch(`http://localhost:8080/auth/user/fetch-user`, {
-          credentials: "include",
-        });
-        if (!res.ok) {
-          console.error(
-            "User details fetch failed",
-            res.status,
-            await res.text()
-          );
-          setUser(null);
-          return;
-        }
-        const data = await res.json();
-        setUser(data);
-      } catch (err) {
-        console.error("Error fetching user:", err);
-        setUser(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchUser();
-  }, []);
+  const fetchUser = async () => {
+  try {
+    // Call your backend endpoint that returns current user info
+    const res = await fetch("http://localhost:8080/auth/user/api/auth/me", {
+      credentials: "include", // very important: send cookie with request
+    });
+
+    if (!res.ok) {
+      console.error("Failed to fetch user:", res.status);
+      setUser(null);
+      return;
+    }
+
+    const data = await res.json();
+    setUser(data);
+  } catch (error) {
+    console.error("Error fetching user:", error);
+    setUser(null);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Run once on mount
   useEffect(() => {
@@ -83,7 +78,9 @@ function App() {
           <Route path="/restaurant/:id" element={<Menu />} />
           <Route path="/orderHistory" element={<OrderHistory />} />
           <Route path="/checkout" element={<CheckoutPage />} />
-          <Route path="/profile" element={<UserPage />} />
+          <Route path="/profile" element={<UserPage userData={user} setUserData={setUser} />}
+/>
+
           <Route path="/success" element={<SuccessPage />} />
           <Route path="/failed" element={<FailedPage />} />
 
