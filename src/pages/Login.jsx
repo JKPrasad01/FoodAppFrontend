@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link, useLocation } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { FiMail, FiLock, FiX } from "react-icons/fi";
 import InputField from "../components/InputField";
 
-export default function Login({ setUser }) {
+export default function Login({ onLoginSuccess }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -13,31 +13,19 @@ export default function Login({ setUser }) {
   const [validPassword, setValidPassword] = useState(false);
 
   const navigate = useNavigate();
-  const location = useLocation();
-  const from = location.state?.from || "/";
   const API_URL = "http://localhost:8080";
 
-  useEffect(() => {
-    setValidUsername(username.trim().length >= 3);
-  }, [username]);
+  // Validate inputs
+  useEffect(() => setValidUsername(username.trim().length >= 3), [username]);
+  useEffect(() => setValidPassword(password.trim().length >= 6), [password]);
 
-  useEffect(() => {
-    setValidPassword(password.length >= 6);
-  }, [password]);
-
+  // If user already logged in (optional safeguard)
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-        navigate(from, { replace: true });
-      } catch (err) {
-        console.error("Invalid user in localStorage:", err);
-        localStorage.removeItem("user");
-      }
+      navigate("/", { replace: true });
     }
-  }, []);
+  }, [navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -48,21 +36,22 @@ export default function Login({ setUser }) {
       const response = await fetch(`${API_URL}/auth/user/login-user`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include", // for JWT cookie
         body: JSON.stringify({ username, password }),
-        credentials: "include",
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Invalid credentials");
+        const { error } = await response.json();
+        throw new Error(error || "Invalid credentials");
       }
 
       const userData = await response.json();
-
       localStorage.setItem("user", JSON.stringify(userData));
-      setUser(userData);
 
-      navigate("/", { replace: true });
+      // 🔁 Call success callback to refresh user & redirect
+      if (onLoginSuccess) {
+        await onLoginSuccess();
+      }
     } catch (err) {
       setError(err.message || "Login failed. Please try again.");
     } finally {
@@ -124,19 +113,17 @@ export default function Login({ setUser }) {
               </div>
             )}
 
-            <div>
-              <button
-                type="submit"
-                disabled={!validUsername || !validPassword || loading}
-                className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 transition ${
-                  !validUsername || !validPassword || loading
-                    ? "bg-gray-400 cursor-not-allowed"
-                    : "bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500"
-                }`}
-              >
-                {loading ? "Signing in..." : "Sign in"}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={!validUsername || !validPassword || loading}
+              className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 transition ${
+                !validUsername || !validPassword || loading
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500"
+              }`}
+            >
+              {loading ? "Signing in..." : "Sign in"}
+            </button>
           </form>
 
           <div className="mt-6 text-center">
