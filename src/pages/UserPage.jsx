@@ -1,53 +1,62 @@
 import { useEffect, useState } from "react";
 import UserDetails from "./UserDetails";
 import { uniAPi } from "../api/uniAPi";
+import { useAuth } from "../context/AuthContext";
 
-export default function UserPage({ userData, setUserData }) {
-  const [user, setUser] = useState(userData || null);
-  const [loading, setLoading] = useState(true);
+export default function UserPage() {
+  const { user: authUser, setUser: setAuthUser, loading } = useAuth();
+
+  const [profileUser, setProfileUser] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
 
   useEffect(() => {
-    // If no username, stop early
-    if (!userData || !userData.username) {
-      setLoading(false);
+    if (!authUser?.username) {
+      setProfileLoading(false);
       return;
     }
 
-    let isMounted = true; // ✅ Prevent state update if unmounted
+    let active = true;
 
     const fetchUser = async () => {
       try {
-        const res = await uniAPi.get(`/user/by-username/${userData.username}`);
-        if (isMounted) setUser(res.data);
+        const res = await uniAPi.get(`/user/by-username/${authUser.username}`);
+        if (active) setProfileUser(res.data);
       } catch (err) {
         console.error("Failed to fetch user details", err);
       } finally {
-        if (isMounted) setLoading(false);
+        if (active) setProfileLoading(false);
       }
     };
 
     fetchUser();
 
     return () => {
-      isMounted = false;
+      active = false;
     };
-  }, [userData?.username]); // ✅ only run when username actually changes
+  }, [authUser?.username]);
 
   const handleUpdate = async (updatedUser) => {
     try {
-      const res = await uniAPi.put(`/user/update/${userData.username}`, updatedUser);
+      const res = await uniAPi.put(
+        `/user/update/${authUser.username}`,
+        updatedUser
+      );
+
       alert("User updated!");
-      setUser(res.data);
-      setUserData(res.data);
+
+      setProfileUser(res.data);
+      setAuthUser(res.data);
       localStorage.setItem("user", JSON.stringify(res.data));
+
     } catch (err) {
       console.error("Failed to update user", err);
       alert("Failed to update user");
     }
   };
 
-  if (loading) return <div>Loading...</div>;
-  if (!user) return <div>No user data available.</div>;
+  if (loading || profileLoading) return <div>Loading...</div>;
 
-  return <UserDetails user={user} onUpdate={handleUpdate} />;
+  if (!profileUser) return <div>No user data available.</div>;
+
+  return <UserDetails user={profileUser} onUpdate={handleUpdate} />;
 }

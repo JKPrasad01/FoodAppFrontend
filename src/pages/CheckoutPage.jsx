@@ -1,47 +1,37 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
-import axios from "axios";
 import { uniAPi } from "../api/uniAPi";
+import { useAuth } from "../context/AuthContext";
+import { FiMapPin, FiPhone, FiPackage, FiShoppingBag } from "react-icons/fi";
 
 const CheckoutPage = () => {
+  const navigate = useNavigate();
+
   const { cartItems, restaurantId, cartTotal, clearCart } = useCart();
+  const { user, loading: authLoading } = useAuth();
+
   const [paymentMethod, setPaymentMethod] = useState("credit-card");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [contactNumber, setContactNumber] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [user, setUser] = useState(null);
 
+  // Redirect if not logged in
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    } else {
+    if (!authLoading && !user) {
       navigate("/login");
     }
-  }, [navigate]);
+  }, [authLoading, user, navigate]);
 
-  console.log("User ID:", user?.id);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!user) {
-        console.log("Redirecting to login from:", location.pathname);
-        navigate("/login", { state: { from: location.pathname } });
-      }
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [user, navigate, location]);
+  if (authLoading || !user) return null;
 
   const validateInputs = () => {
-    if (!deliveryAddress.trim()) return "Delivery address is required";
-    if (!contactNumber.match(/^\d{10}$/))
-      return "Contact number must be 10 digits";
-    if (!cartItems.length) return "Cart is empty";
-    if (!restaurantId) return "No restaurant selected";
-    if (!paymentMethod) return "Payment method is required";
+    if (!deliveryAddress.trim()) return "Delivery address is required.";
+    if (!/^\d{10}$/.test(contactNumber))
+      return "Contact number must be 10 digits.";
+    if (!cartItems.length) return "Your cart is empty!";
+    if (!restaurantId) return "No restaurant selected.";
     return null;
   };
 
@@ -58,245 +48,163 @@ const CheckoutPage = () => {
     }
 
     try {
-      // Map paymentMethod to paymentStatus
       const paymentStatus =
         paymentMethod === "credit-card" ? "PENDING" : "COMPLETED";
 
-      // Prepare OrderDTO payload
       const orderData = {
         userId: user.userId,
         restaurantId,
         orderItemList: cartItems.map((item) => ({
           menuId: item.menuId,
-          quantity: Number(item.quantity), // Ensure Long type
+          quantity: Number(item.quantity),
         })),
         deliveryAddress,
         contactNumber,
         paymentStatus,
       };
 
-      console.log("Sending orderData:", orderData);
-
-      // Handle credit card payment intent (if applicable)
-      let paymentIntent = null;
-      if (paymentMethod === "credit-card") {
-        const { data } = await uniAPi.post(`/payments/create-intent`, {
-          amount: cartTotal * 100, // Convert to cents
-          currency: "inr",
-        });
-        paymentIntent = data;
-      }
-
-      // Create order
-      console.log("userData--->", user);
       const response = await uniAPi.post(`/orders/create`, orderData);
 
       if (response.status === 200) {
-        console.log("successfully");
         clearCart();
         navigate("/success", {
           state: { orderNumber: response.data.orderNumber },
         });
       }
     } catch (err) {
-      // Handle backend validation errors
-      if (err.response?.status === 400 && err.response.data?.errors) {
-        const validationErrors = err.response.data.errors
-          .map((e) => e.defaultMessage)
-          .join("; ");
-        setError(`Validation failed: ${validationErrors}`);
-      } else {
-        setError(
-          err.response?.data?.error ||
-            "Order creation failed. Please try again."
-        );
-      }
-      console.error("Order creation error:", err.response?.data || err);
+      setError(
+        err.response?.data?.error || "Order creation failed. Please try again."
+      );
       navigate("/failed");
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (!user) return null;
-
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white shadow-md rounded-lg overflow-hidden">
-          <div className="bg-indigo-700 text-white p-6">
-            <h1 className="text-2xl font-bold">Complete Your Purchase</h1>
-            <p className="opacity-90">Final step to confirm your order</p>
-          </div>
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-10 px-4">
+      <div className="max-w-3xl mx-auto">
 
+        {/* Header */}
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-bold text-gray-900">Checkout</h1>
+          <p className="text-gray-600 mt-2">Complete your order to continue</p>
+        </div>
+
+        {/* Card */}
+        <div className="bg-white shadow-xl rounded-2xl overflow-hidden">
+
+          {/* Order Summary */}
           <div className="p-6 border-b">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
+            <h2 className="text-xl font-semibold text-gray-800 flex items-center mb-4">
+              <FiShoppingBag className="text-indigo-600 mr-2" />
               Order Summary
             </h2>
-            {cartItems.length === 0 ? (
-              <p className="text-gray-500">Your cart is empty.</p>
-            ) : (
-              <>
-                {restaurantId && (
-                  <p className="text-gray-600 mb-4">
-                    Ordering from Restaurant ID: {restaurantId}
-                  </p>
-                )}
-                <div className="space-y-3 mb-4">
-                  {cartItems.map((item) => (
-                    <div key={item.menuId} className="flex justify-between">
-                      <span className="text-gray-600">
-                        {item.menuName} x {item.quantity}
-                      </span>
-                      <span>₹{(item.price * item.quantity).toFixed(2)}</span>
+
+            {cartItems.length > 0 ? (
+              <div className="space-y-4">
+                {cartItems.map((item) => (
+                  <div
+                    key={item.menuId}
+                    className="flex justify-between items-center pb-3 border-b last:border-0"
+                  >
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {item.menuName} × {item.quantity}
+                      </p>
+                      <p className="text-gray-600 text-sm">₹{item.price}</p>
                     </div>
-                  ))}
+                    <p className="font-semibold text-gray-900">
+                      ₹{(item.price * item.quantity).toFixed(2)}
+                    </p>
+                  </div>
+                ))}
+
+                <div className="flex justify-between mt-4 pt-4 border-t border-gray-200">
+                  <p className="text-lg font-semibold">Total</p>
+                  <p className="text-lg font-semibold text-indigo-600">
+                    ₹{cartTotal.toFixed(2)}
+                  </p>
                 </div>
-                <div className="space-y-3 pt-2 border-t">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Subtotal</span>
-                    <span>₹{cartTotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Shipping</span>
-                    <span className="text-green-600">Free</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-lg pt-2">
-                    <span>Total</span>
-                    <span>₹{cartTotal.toFixed(2)}</span>
-                  </div>
-                </div>
-              </>
+              </div>
+            ) : (
+              <p className="text-gray-500">Your cart is empty.</p>
             )}
           </div>
 
-          <form onSubmit={handleSubmit} className="p-6">
-            {error && <div className="text-red-600 mb-4">{error}</div>}
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="p-6 space-y-6">
+            {error && (
+              <div className="bg-red-100 text-red-700 p-3 rounded-lg">
+                {error}
+              </div>
+            )}
 
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Delivery Details
-            </h2>
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Delivery Address
-                </label>
+            {/* Delivery Address */}
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Delivery Address
+              </label>
+              <div className="flex items-center border rounded-lg p-3 bg-gray-50">
+                <FiMapPin className="text-indigo-600 mr-3" />
                 <input
                   type="text"
                   value={deliveryAddress}
                   onChange={(e) => setDeliveryAddress(e.target.value)}
-                  placeholder="123 Main St, City, Country"
-                  className="w-full p-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-                  required
+                  placeholder="Enter your delivery address"
+                  className="w-full bg-transparent outline-none"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Contact Number
-                </label>
+            </div>
+
+            {/* Contact Number */}
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Contact Number
+              </label>
+              <div className="flex items-center border rounded-lg p-3 bg-gray-50">
+                <FiPhone className="text-indigo-600 mr-3" />
                 <input
                   type="tel"
                   value={contactNumber}
                   onChange={(e) => setContactNumber(e.target.value)}
-                  placeholder="1234567890"
-                  className="w-full p-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-                  required
+                  placeholder="10-digit mobile number"
+                  className="w-full bg-transparent outline-none"
                 />
               </div>
             </div>
 
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Payment Method
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <button
-                type="button"
-                className={`border rounded-md p-4 text-center transition ${
-                  paymentMethod === "credit-card"
-                    ? "border-indigo-600 ring-2 ring-indigo-200 bg-indigo-50"
-                    : "border-gray-300 hover:bg-gray-50"
-                }`}
-                onClick={() => setPaymentMethod("credit-card")}
-              >
-                <div className="font-medium">Credit Card</div>
-              </button>
-              <button
-                type="button"
-                className={`border rounded-md p-4 text-center transition ${
-                  paymentMethod === "paypal"
-                    ? "border-indigo-600 ring-2 ring-indigo-200 bg-indigo-50"
-                    : "border-gray-300 hover:bg-gray-50"
-                }`}
-                onClick={() => setPaymentMethod("paypal")}
-              >
-                <div className="font-medium">PayPal</div>
-              </button>
-              <button
-                type="button"
-                className={`border rounded-md p-4 text-center transition ${
-                  paymentMethod === "apple-pay"
-                    ? "border-indigo-600 ring-2 ring-indigo-200 bg-indigo-50"
-                    : "border-gray-300 hover:bg-gray-50"
-                }`}
-                onClick={() => setPaymentMethod("apple-pay")}
-              >
-                <div className="font-medium">Apple Pay</div>
-              </button>
-            </div>
-
-            {paymentMethod === "credit-card" && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Card Number
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="4242 4242 4242 4242"
-                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Expiration
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="MM/YY"
-                      className="w-full p-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      CVV
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="123"
-                      className="w-full p-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-                      required
-                    />
-                  </div>
-                </div>
+            {/* Payment */}
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Payment Method
+              </label>
+              <div className="grid grid-cols-3 gap-3">
+                {["credit-card", "paypal", "apple-pay"].map((method) => (
+                  <button
+                    type="button"
+                    key={method}
+                    onClick={() => setPaymentMethod(method)}
+                    className={`border rounded-lg py-3 text-center transition ${
+                      paymentMethod === method
+                        ? "border-indigo-600 bg-indigo-50"
+                        : "border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    {method.replace("-", " ").toUpperCase()}
+                  </button>
+                ))}
               </div>
-            )}
-
-            <div className="mt-8">
-              <button
-                type="submit"
-                disabled={isLoading || !cartItems.length}
-                className={`w-full py-3 px-4 rounded-md font-medium transition ${
-                  isLoading || !cartItems.length
-                    ? "bg-gray-400 cursor-not-allowed"
-                    : "bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                }`}
-              >
-                {isLoading ? "Processing..." : "Confirm Payment"}
-              </button>
             </div>
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={isLoading || !cartItems.length}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {isLoading ? "Processing..." : "Place Order"}
+            </button>
           </form>
         </div>
       </div>
